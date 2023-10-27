@@ -2,41 +2,60 @@
 
 namespace app\controllers;
 
+use OpenApi\Annotations as OA;
 use Yii;
-use yii\filters\AccessControl;
+use yii\helpers\Url;
 use yii\web\Controller;
-use yii\web\Response;
-use yii\filters\VerbFilter;
-use app\models\LoginForm;
-use app\models\ContactForm;
+use yii\web\NotFoundHttpException;
+
+/**
+ * @OA\Swagger(
+ *     basePath="/",
+ *     produces={"application/json"},
+ *     consumes={"application/json"},
+ *     @OA\Info(version="1.0", title="Reezonly Test Task API"),
+ *     @OA\Server(url="http://reezonly.local"),
+ *     @OA\Tag(name="Auth", description="Авторизация"),
+ *     @OA\Tag(name="Admin", description="Администрирование"),
+ *     @OA\Tag(name="Catalog", description="Каталог"),
+ *     @OA\SecurityScheme(
+ *       securityScheme="bearerAuth",
+ *       type="http",
+ *       scheme="bearer",
+ *       bearerFormat="JWT",
+ *     ),
+ * ),
+ * @OA\Schema(
+ *     schema="meta",
+ *     @OA\Property(property="totalCount", type="integer", example="1", description="всего записей"),
+ *     @OA\Property(property="pageCount", type="integer", example="1", description="всего страниц"),
+ *     @OA\Property(property="currentPage", type="integer", example="1", description="текущая страница"),
+ *     @OA\Property(property="perPage", type="integer", example="1", description="записей на странице"),
+ * ),
+ * @OA\Schema(
+ *     schema="ok",
+ *     @OA\Property(property="status", type="string", example="ok"),
+ * ),
+ * @OA\Schema(
+ *     schema="HttpException",
+ *     @OA\Property(property="name", type="string", example="Forbidden", description="Тип ошибки"),
+ *     @OA\Property(property="message", type="string", example="Forbidden", description="Текст ошибки"),
+ *     @OA\Property(property="code", type="integer", example="0", description="код ошибки"),
+ *     @OA\Property(property="status", type="integer", example="403", description="HTTP-код ошибки"),
+ *     @OA\Property(property="type", type="string", example="yii\\web\\ForbiddenHttpException", description="Отладочная информация"),
+ * ),
+ *
+ * @OA\Schema(
+ *     schema="Author",
+ *     @OA\Property(property="id", type="integer", example="2", description="ID"),
+ *     @OA\Property(property="username", type="string", example="Someuser", description="Имя пользователя"),
+ *     @OA\Property(property="blocked", type="boolean", example="true", description="Флаг блокировки"),
+ *     @OA\Property(property="valid_until", type="string|null", example="2023-10-12Т12:56:22+03:00", description="Дата автоматической блокировки."),
+ * ),
+ */
 
 class SiteController extends Controller
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function behaviors()
-    {
-        return [
-            'access' => [
-                'class' => AccessControl::class,
-                'only' => ['logout'],
-                'rules' => [
-                    [
-                        'actions' => ['logout'],
-                        'allow' => true,
-                        'roles' => ['@'],
-                    ],
-                ],
-            ],
-            'verbs' => [
-                'class' => VerbFilter::class,
-                'actions' => [
-                    'logout' => ['post'],
-                ],
-            ],
-        ];
-    }
 
     /**
      * {@inheritdoc}
@@ -44,85 +63,38 @@ class SiteController extends Controller
     public function actions()
     {
         return [
-            'error' => [
-                'class' => 'yii\web\ErrorAction',
+            'index' => [
+                'class' => \light\swagger\SwaggerAction::class,
+                'restUrl' => Url::to(['site/json-schema']),
+                'configurations' => [
+                    'docExpansion' => 'none',
+                ]
             ],
-            'captcha' => [
-                'class' => 'yii\captcha\CaptchaAction',
-                'fixedVerifyCode' => YII_ENV_TEST ? 'testme' : null,
-            ],
+            'json-schema' => [
+                'class' => \light\swagger\SwaggerApiAction::class,
+                'scanDir' => [
+                    Yii::getAlias('@app/controllers'),
+                    Yii::getAlias('@app/modules/admin/controllers'),
+                    Yii::getAlias('@app/modules/admin/models'),
+                    Yii::getAlias('@app/modules/auth/controllers'),
+                    Yii::getAlias('@app/modules/auth/models'),
+                    Yii::getAlias('@app/modules/catalog/controllers'),
+                    Yii::getAlias('@app/modules/catalog/models'),
+                    Yii::getAlias('@app/modules/user/controllers'),
+                    Yii::getAlias('@app/modules/user/models'),
+                ],
+                'api_key' => 'balbalbal',
+            ]
         ];
     }
 
-    /**
-     * Displays homepage.
-     *
-     * @return string
-     */
-    public function actionIndex()
+    public function actionError()
     {
-        return $this->render('index');
-    }
 
-    /**
-     * Login action.
-     *
-     * @return Response|string
-     */
-    public function actionLogin()
-    {
-        if (!Yii::$app->user->isGuest) {
-            return $this->goHome();
+        if (($exception = Yii::$app->getErrorHandler()->exception) === null) {
+            $exception = new NotFoundHttpException(Yii::t('yii', 'Page not found.'), 404);
         }
-
-        $model = new LoginForm();
-        if ($model->load(Yii::$app->request->post()) && $model->login()) {
-            return $this->goBack();
-        }
-
-        $model->password = '';
-        return $this->render('login', [
-            'model' => $model,
-        ]);
-    }
-
-    /**
-     * Logout action.
-     *
-     * @return Response
-     */
-    public function actionLogout()
-    {
-        Yii::$app->user->logout();
-
-        return $this->goHome();
-    }
-
-    /**
-     * Displays contact page.
-     *
-     * @return Response|string
-     */
-    public function actionContact()
-    {
-        $model = new ContactForm();
-        if ($model->load(Yii::$app->request->post()) && $model->contact(Yii::$app->params['adminEmail'])) {
-            Yii::$app->session->setFlash('contactFormSubmitted');
-
-            return $this->refresh();
-        }
-        return $this->render('contact', [
-            'model' => $model,
-        ]);
-    }
-
-    /**
-     * Displays about page.
-     *
-     * @return string
-     */
-    public function actionAbout()
-    {
-        return $this->render('about');
+        \Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
+        return ['code' => $exception->getCode(), 'message' => $exception->getMessage()];
     }
 }
